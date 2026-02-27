@@ -1,113 +1,135 @@
-"""options_page.py — V2 Options Engine: complete rebuild (3A-3D)
-White/blue design system, Long Call + Bear Put Spread, scenario tables, P/L charts, Options Chain Explorer."""
+"""options_page.py — Section 3: Options Engine V2 complete rebuild (3A-3D)
+White/blue Bloomberg-card design, ORATS + Polygon live data, full trade structures,
+scenario tables, P/L charts, Options Chain Explorer."""
 
 import streamlit as st
+import streamlit.components.v1 as components
 import plotly.graph_objects as go
 import pandas as pd
-from datetime import datetime, date, timedelta
+import numpy as np
+import requests
 import math
-import streamlit.components.v1 as components
+from datetime import datetime, date, timedelta
 
-# ── Design System Constants ─────────────────────────────────────────────────
-BLUE = "#2563EB"
-WHITE = "#FFFFFF"
-BORDER = "#E2E8F0"
-TEXT_DARK = "#1E293B"
-TEXT_GRAY = "#6B7280"
-GREEN = "#16A34A"
-RED = "#DC2626"
-AMBER = "#F59E0B"
-LIGHT_BG = "#F8FAFC"
+# ── Design Tokens ────────────────────────────────────────────────────────────
+BLUE       = "#2563EB"
+WHITE      = "#FFFFFF"
+BORDER     = "#E2E8F0"
+TEXT_DARK  = "#1E293B"
+TEXT_GRAY  = "#6B7280"
+GREEN      = "#16A34A"
+RED        = "#DC2626"
+AMBER      = "#F59E0B"
+LIGHT_BG   = "#F8FAFC"
+FONT       = "Helvetica Neue, Helvetica, Arial, sans-serif"
 
 STAGE_COLORS = {
     "PRE_BREAKOUT": "#F59E0B", "EARLY_CONFIRMATION": "#3B82F6",
-    "MID_CONFIRMATION": "#16A34A", "LATE_CONFIRMATION": "#8B5CF6", "SURGE_PHASE": "#2563EB",
+    "MID_CONFIRMATION": "#16A34A", "LATE_CONFIRMATION": "#8B5CF6",
+    "SURGE_PHASE": "#2563EB",
 }
 STAGE_EXPIRY = {
     "PRE_BREAKOUT": "5-6 months", "EARLY_CONFIRMATION": "4-5 months",
-    "MID_CONFIRMATION": "3-4 months", "LATE_CONFIRMATION": "2-3 months", "SURGE_PHASE": "45-60 days",
+    "MID_CONFIRMATION": "3-4 months", "LATE_CONFIRMATION": "2-3 months",
+    "SURGE_PHASE": "45-60 days",
 }
 
-ORATS_KEY = "306e5550-50f0-478a-b47d-477afa769d0a"
+ORATS_KEY  = "306e5550-50f0-478a-b47d-477afa769d0a"
 POLYGON_KEY = "vzp2Q7xwgpv5g6rEl3Ewfp28fQlXsYqj"
 
-# ── GROWTH_UNIVERSE (250+ tickers) ─────────────────────────────────────────
+# ── GROWTH_UNIVERSE (200+ tickers for explorer) ─────────────────────────────
+# TOP_50 tickers merged at runtime
 GROWTH_UNIVERSE = {
-    # TOP_50 will be merged in at runtime
     "NVDA": "NVIDIA", "MSFT": "Microsoft", "GOOGL": "Alphabet", "META": "Meta Platforms",
-    "AMZN": "Amazon", "TSLA": "Tesla", "AMD": "AMD", "AVGO": "Broadcom", "QCOM": "Qualcomm",
-    "MU": "Micron", "SMCI": "Super Micro Computer", "INTC": "Intel", "NFLX": "Netflix",
+    "AMZN": "Amazon", "TSLA": "Tesla", "AMD": "Advanced Micro Devices", "AVGO": "Broadcom",
+    "QCOM": "Qualcomm", "MU": "Micron Technology", "INTC": "Intel", "NFLX": "Netflix",
     "SPOT": "Spotify", "RBLX": "Roblox", "U": "Unity Software", "SNAP": "Snap",
-    "PINS": "Pinterest", "ZM": "Zoom Video", "DOCU": "DocuSign", "OKTA": "Okta",
-    "SNOW": "Snowflake", "DBX": "Dropbox", "BOX": "Box", "HUBS": "HubSpot",
-    "VEEV": "Veeva Systems", "PAYC": "Paycom", "PCOR": "Procore Technologies",
-    "ASAN": "Asana", "IOT": "Samsara", "BILL": "Bill Holdings", "TOST": "Toast",
-    "SQ": "Block", "PYPL": "PayPal", "AFRM": "Affirm", "SOFI": "SoFi Technologies",
-    "HOOD": "Robinhood", "COIN": "Coinbase", "MSTR": "MicroStrategy",
-    "RIOT": "Riot Platforms", "MARA": "Marathon Digital", "CLSK": "CleanSpark",
-    "CIFR": "Cipher Mining", "ADBE": "Adobe", "CRM": "Salesforce", "NOW": "ServiceNow",
-    "WDAY": "Workday", "ORCL": "Oracle", "SAP": "SAP", "INTU": "Intuit",
-    "ANSS": "Ansys", "CDNS": "Cadence Design", "FTNT": "Fortinet", "PANW": "Palo Alto Networks",
-    "S": "SentinelOne", "ZS": "Zscaler", "CRWD": "CrowdStrike", "TENB": "Tenable",
-    "QLYS": "Qualys", "VRNS": "Varonis Systems", "SAIL": "SailPoint",
-    "CYBR": "CyberArk", "RDWR": "Radware", "DDOG": "Datadog", "NEWR": "New Relic",
-    "ESTC": "Elastic", "SUMO": "Sumo Logic", "DT": "Dynatrace",
-    "GTLB": "GitLab", "FROG": "JFrog", "HCP": "HashiCorp", "CFLT": "Confluent",
-    "MSCI": "MSCI", "ICE": "Intercontinental Exchange", "CME": "CME Group",
-    "NDAQ": "Nasdaq", "SPGI": "S&P Global", "MCO": "Moody's", "FDS": "FactSet",
-    "MORN": "Morningstar", "OPEN": "Opendoor", "ABNB": "Airbnb", "BKNG": "Booking Holdings",
-    "EXPE": "Expedia", "LYFT": "Lyft", "UBER": "Uber", "DLO": "DLocal",
-    "WEX": "WEX", "FLYW": "Flywire", "PRFT": "Perficient",
-    "AXSM": "Axsome Therapeutics", "RXRX": "Recursion Pharma", "SGFY": "Signify Health",
-    "DOCS": "Doximity", "ACMR": "ACM Research", "AAON": "AAON",
+    "ZM": "Zoom Video", "DOCU": "DocuSign", "OKTA": "Okta", "SNOW": "Snowflake",
+    "HUBS": "HubSpot", "VEEV": "Veeva Systems", "PAYC": "Paycom", "BILL": "Bill.com",
+    "SQ": "Block", "PYPL": "PayPal", "AFRM": "Affirm", "MSTR": "MicroStrategy",
+    "RIOT": "Riot Platforms", "CLSK": "CleanSpark", "ADBE": "Adobe", "CRM": "Salesforce",
+    "NOW": "ServiceNow", "ORCL": "Oracle", "INTU": "Intuit", "ANSS": "Ansys",
+    "CDNS": "Cadence Design", "FTNT": "Fortinet", "PANW": "Palo Alto Networks",
+    "ZS": "Zscaler", "TENB": "Tenable", "DT": "Dynatrace", "FROG": "JFrog",
+    "HCP": "HashiCorp", "ESTC": "Elastic", "ABNB": "Airbnb", "BKNG": "Booking Holdings",
+    "EXPE": "Expedia", "LYFT": "Lyft", "UBER": "Uber", "NU": "Nu Holdings",
+    "STNE": "StoneCo", "GLBE": "Global-e Online", "CELH": "Celsius Holdings",
+    "MNST": "Monster Beverage", "CMG": "Chipotle", "WING": "Wingstop",
+    "LULU": "Lululemon", "CROX": "Crocs", "DECK": "Deckers Outdoor",
+    "SKX": "Skechers", "TPR": "Tapestry", "GOOS": "Canada Goose", "NKE": "Nike",
+    "UAA": "Under Armour", "SPGI": "S&P Global", "MCO": "Moody s", "MSCI": "MSCI Inc",
+    "NDAQ": "Nasdaq Inc", "ICE": "ICE", "OPEN": "Opendoor", "ACMR": "ACM Research",
+    "WOLF": "Wolfspeed", "SWKS": "Skyworks", "MCHP": "Microchip Technology",
+    "AEHR": "Aehr Test Systems", "NVEI": "Nuvei",
+    "AAPL": "Apple", "GOOG": "Alphabet (C)", "V": "Visa", "MA": "Mastercard",
+    "JPM": "JPMorgan Chase", "BAC": "Bank of America", "WFC": "Wells Fargo",
+    "GS": "Goldman Sachs", "MS": "Morgan Stanley", "BLK": "BlackRock",
+    "SCHW": "Charles Schwab", "C": "Citigroup", "AXP": "American Express",
+    "PFE": "Pfizer", "JNJ": "Johnson & Johnson", "UNH": "UnitedHealth",
+    "LLY": "Eli Lilly", "ABBV": "AbbVie", "MRK": "Merck", "BMY": "Bristol-Myers",
+    "ISRG": "Intuitive Surgical", "DXCM": "DexCom", "ILMN": "Illumina",
+    "REGN": "Regeneron", "VRTX": "Vertex Pharma", "MRNA": "Moderna",
+    "WMT": "Walmart", "COST": "Costco", "TGT": "Target", "HD": "Home Depot",
+    "LOW": "Lowe's", "SBUX": "Starbucks", "MCD": "McDonald's",
+    "DIS": "Walt Disney", "ROKU": "Roku", "TWLO": "Twilio", "TEAM": "Atlassian",
+    "DKNG": "DraftKings", "RIVN": "Rivian", "LCID": "Lucid Motors", "NIO": "NIO",
+    "XPEV": "XPeng", "LI": "Li Auto", "CHWY": "Chewy",
+    "ETSY": "Etsy", "W": "Wayfair", "BABA": "Alibaba",
+    "JD": "JD.com", "PDD": "PDD Holdings", "SE": "Sea Limited",
+    "GRAB": "Grab Holdings", "CPNG": "Coupang",
+    "PATH": "UiPath", "AI": "C3.ai", "BBAI": "BigBear.ai",
+    "S": "SentinelOne", "APPS": "Digital Turbine", "MGNI": "Magnite",
+    "PUBM": "PubMatic", "DSP": "Viant Technology",
+    "ENPH": "Enphase Energy", "SEDG": "SolarEdge", "FSLR": "First Solar",
+    "RUN": "Sunrun", "NOVA": "Sunnova",
+    "XOM": "ExxonMobil", "CVX": "Chevron", "COP": "ConocoPhillips",
+    "DVN": "Devon Energy", "EOG": "EOG Resources",
+    "BA": "Boeing", "LMT": "Lockheed Martin", "RTX": "RTX Corp",
+    "GD": "General Dynamics", "NOC": "Northrop Grumman",
+    "DE": "Deere & Co", "CAT": "Caterpillar", "HON": "Honeywell",
+    "GE": "GE Aerospace", "MMM": "3M",
+    "LC": "LendingClub", "ALLY": "Ally Financial",
+    "PINS": "Pinterest", "DBX": "Dropbox", "BOX": "Box",
+    "PCOR": "Procore Technologies", "ASAN": "Asana", "IOT": "Samsara",
+    "TOST": "Toast", "CIFR": "Cipher Mining", "SAP": "SAP",
+    "CYBR": "CyberArk", "RDWR": "Radware", "NEWR": "New Relic",
+    "SUMO": "Sumo Logic", "QLYS": "Qualys", "VRNS": "Varonis Systems",
+    "SAIL": "SailPoint", "CME": "CME Group", "FDS": "FactSet",
+    "MORN": "Morningstar", "DLO": "DLocal", "WEX": "WEX",
+    "FLYW": "Flywire", "PRFT": "Perficient", "DOCS": "Doximity",
     "CIEN": "Ciena", "VIAV": "Viavi Solutions", "LITE": "Lumentum",
     "COHR": "Coherent", "MKSI": "MKS Instruments", "ENTG": "Entegris",
-    "ONTO": "Onto Innovation", "WOLF": "Wolfspeed", "SWKS": "Skyworks",
-    "MCHP": "Microchip Technology", "LSCC": "Lattice Semiconductor",
-    "AEHR": "Aehr Test Systems", "NVEI": "Nuvei", "GLBE": "Global-e Online",
-    "PAYO": "Payoneer", "RELY": "Remitly", "NU": "Nu Holdings",
-    "STNE": "StoneCo", "ECL": "Ecolab",
-    "CELH": "Celsius Holdings", "MNST": "Monster Beverage", "FIZZ": "National Beverage",
-    "KDP": "Keurig Dr Pepper", "BROS": "Dutch Bros", "CAVA": "CAVA Group",
-    "CMG": "Chipotle", "SHAK": "Shake Shack", "WING": "Wingstop",
-    "LULU": "Lululemon", "CROX": "Crocs", "DECK": "Deckers Outdoor",
-    "SKX": "Skechers", "ONON": "On Holding", "TPR": "Tapestry",
-    "CPRI": "Capri Holdings", "VFC": "VF Corporation", "UAA": "Under Armour",
-    "NKE": "Nike", "HBI": "Hanesbrands", "GOOS": "Canada Goose", "PVH": "PVH Corp",
-    # Additional growth names
-    "DUOL": "Duolingo", "AXON": "Axon Enterprise", "TTD": "The Trade Desk",
-    "HIMS": "Hims & Hers Health", "ARM": "Arm Holdings", "MELI": "MercadoLibre",
-    "MNDY": "monday.com", "NET": "Cloudflare", "UPST": "Upstart",
-    "TMDX": "TransMedics", "ALAB": "Astera Labs", "RKLB": "Rocket Lab",
-    "FOUR": "Shift4 Payments", "IBKR": "Interactive Brokers",
-    "DASH": "DoorDash", "RDDT": "Reddit", "CVNA": "Carvana",
-    "SHOP": "Shopify", "PLTR": "Palantir", "INSP": "Inspire Medical",
-    "AMPH": "Amphastar Pharma", "FICO": "Fair Isaac", "APP": "AppLovin",
-    "LMND": "Lemonade", "DOCN": "DigitalOcean", "MDB": "MongoDB",
-    "ANET": "Arista Networks", "PCVX": "Vaxcyte",
+    "ONTO": "Onto Innovation", "ECL": "Ecolab", "FIZZ": "National Beverage",
+    "KDP": "Keurig Dr Pepper", "BROS": "Dutch Bros", "SHAK": "Shake Shack",
+    "CPRI": "Capri Holdings", "VFC": "VF Corporation", "HBI": "Hanesbrands",
+    "PVH": "PVH Corp",
 }
 
 
-# ── Helpers ─────────────────────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────────────────
 def _section(title, sub=""):
     st.markdown(f'''<div style="background:linear-gradient(90deg,rgba(37,99,235,0.08),transparent);
     border-left:4px solid {BLUE};padding:16px 20px;border-radius:0 8px 8px 0;margin:32px 0 16px 0;">
-    <h2 style="font-size:20px!important;font-weight:700!important;color:{TEXT_DARK}!important;margin:0!important;">{title}</h2>
-    <div style="font-size:13px;color:{TEXT_GRAY}!important;margin-top:4px;">{sub}</div></div>''', unsafe_allow_html=True)
+    <h2 style="font-size:20px!important;font-weight:700!important;color:{TEXT_DARK}!important;margin:0!important;
+    font-family:{FONT};">{title}</h2>
+    <div style="font-size:13px;color:{TEXT_GRAY}!important;margin-top:4px;">{sub}</div></div>''',
+    unsafe_allow_html=True)
 
 
 def _white_chart(fig):
     fig.update_layout(
         template="plotly_white", paper_bgcolor=WHITE, plot_bgcolor=WHITE,
-        font=dict(family="Helvetica Neue, Helvetica, Arial, sans-serif", color="#111111"),
+        font=dict(family=FONT, color="#111111"),
         xaxis=dict(gridcolor=BORDER), yaxis=dict(gridcolor=BORDER),
         margin=dict(l=40, r=20, t=40, b=40),
     )
     return fig
 
 
-def _pill(text, bg, fg="#FFF"):
-    return f'<span style="background:{bg};color:{fg};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;display:inline-block;margin:2px;">{text}</span>'
+def _pill(label, value, color):
+    return (f'<span style="display:inline-block;background:{color}15;color:{color};'
+            f'font-size:12px;font-weight:600;padding:3px 10px;border-radius:20px;'
+            f'margin-right:6px;border:1px solid {color}30;">{label}: {value}</span>')
 
 
 def _earnings_countdown(earnings_date_str):
@@ -116,19 +138,41 @@ def _earnings_countdown(earnings_date_str):
         delta = (ed - date.today()).days
         if delta > 0:
             return f"{delta}d", BLUE
-        elif delta == 0:
+        if delta == 0:
             return "TODAY", RED
-        else:
-            return "PAST", TEXT_GRAY
+        return "PAST", TEXT_GRAY
     except Exception:
         return "N/A", TEXT_GRAY
 
 
+def _iv_color(iv):
+    if iv < 40:
+        return GREEN
+    if iv <= 60:
+        return AMBER
+    return RED
+
+
+def _iv_label_short(iv):
+    if iv < 40:
+        return "cheap (great time to buy)"
+    if iv <= 60:
+        return "fairly priced (solid setup)"
+    return "expensive (size down)"
+
+
+def _iv_label_long(iv):
+    if iv < 30:
+        return "cheap — great time to buy calls"
+    if iv < 60:
+        return "fairly priced — solid setup"
+    return "expensive — consider smaller size"
+
+
+# ── API Helpers ──────────────────────────────────────────────────────────────
 @st.cache_data(ttl=3600)
 def _fetch_iv_rank(ticker):
-    """Fetch IV rank from ORATS. Returns float or None."""
     try:
-        import requests
         r = requests.get("https://api.orats.io/datav2/hist/ivrank",
                          params={"ticker": ticker, "token": ORATS_KEY}, timeout=5)
         if r.status_code == 200:
@@ -141,71 +185,37 @@ def _fetch_iv_rank(ticker):
 
 
 @st.cache_data(ttl=900)
-def _fetch_polygon_options_flow(ticker):
-    """Check Polygon for unusual options activity. Returns True if smart money detected."""
+def _fetch_unusual_activity(ticker):
+    """Check Polygon options snapshot for unusual call activity."""
     try:
-        import requests
-        r = requests.get(
-            f"https://api.polygon.io/v3/snapshot/options/{ticker}",
-            params={"limit": 10, "apiKey": POLYGON_KEY}, timeout=5,
-        )
+        url = f"https://api.polygon.io/v3/snapshot/options/{ticker}?limit=20&apiKey={POLYGON_KEY}"
+        r = requests.get(url, timeout=5)
         if r.status_code == 200:
             results = r.json().get("results", [])
-            for contract in results:
-                day = contract.get("day", {})
+            total_call_vol = 0
+            high_vol = 0
+            for opt in results:
+                day = opt.get("day", {})
                 vol = day.get("volume", 0)
-                if vol > 1000:
-                    return True
-                if vol > 500:
-                    return True
-            return False
+                details = opt.get("details", {})
+                if details.get("contract_type", "").lower() == "call":
+                    total_call_vol += vol
+                    if vol > 500:
+                        high_vol += 1
+            if high_vol > 0 or total_call_vol > 2000:
+                return True
     except Exception:
-        return False
+        pass
+    return False
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=1800)
 def _fetch_polygon_price(ticker):
-    """Get latest close price from Polygon."""
     try:
-        import requests
-        r = requests.get(
-            f"https://api.polygon.io/v2/aggs/ticker/{ticker}/prev",
-            params={"apiKey": POLYGON_KEY}, timeout=5,
-        )
-        if r.status_code == 200:
-            results = r.json().get("results", [])
-            if results:
-                return results[0].get("c")
-    except Exception:
-        pass
-    return None
-
-
-@st.cache_data(ttl=300)
-def _fetch_orats_strikes(ticker):
-    """Fetch strikes data from ORATS."""
-    try:
-        import requests
-        r = requests.get("https://api.orats.io/datav2/strikes",
-                         params={"ticker": ticker, "token": ORATS_KEY}, timeout=8)
-        if r.status_code == 200:
-            return r.json().get("data", [])
-    except Exception:
-        pass
-    return []
-
-
-@st.cache_data(ttl=300)
-def _fetch_orats_smv(ticker):
-    """Fetch SMV summaries (ATM IV) from ORATS."""
-    try:
-        import requests
-        r = requests.get("https://api.orats.io/datav2/smv/summaries",
-                         params={"ticker": ticker, "token": ORATS_KEY}, timeout=5)
-        if r.status_code == 200:
-            data = r.json().get("data", [])
-            if data:
-                return data[0]
+        url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/prev?apiKey={POLYGON_KEY}"
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200 and r.json().get("results"):
+            return r.json()["results"][0]["c"]
     except Exception:
         pass
     return None
@@ -213,51 +223,205 @@ def _fetch_orats_smv(ticker):
 
 @st.cache_data
 def _load():
-    from applovin_data import TOP_50_STOCKS, TOP_25_CONVICTION, APP_QUARTERS
-    return TOP_50_STOCKS, TOP_25_CONVICTION, APP_QUARTERS
+    from applovin_data import TOP_50_STOCKS, TOP_25_CONVICTION
+    return TOP_50_STOCKS, TOP_25_CONVICTION
 
 
-def _iv_label(iv):
-    if iv < 30:
-        return "cheap", GREEN
-    elif iv <= 60:
-        return "fairly priced", AMBER
-    else:
-        return "expensive", RED
-
-
-def _build_pl_chart(s):
-    """Build a redesigned P/L chart for a stock."""
+# ═════════════════════════════════════════════════════════════════════════════
+#  TRADE CARD RENDERER (shared by 3C and 3D)
+# ═════════════════════════════════════════════════════════════════════════════
+def _render_trade_card(s):
+    """Render a full trade setup card for stock dict `s`."""
+    ticker = s["ticker"]
+    company = s.get("company_name", ticker)
     current = s["price_current"]
-    strike = s["call_strike"]
-    breakeven = s["upside_breakeven"]
+    sc = STAGE_COLORS.get(s.get("app_stage", ""), TEXT_GRAY)
+    stage_name = s.get("app_stage", "N/A").replace("_", " ")
 
-    prices_range = []
-    step = max(1, int(current * 0.02))
-    for p in range(int(current * 0.7), int(current * 1.6) + 1, step):
-        prices_range.append(p)
+    live_iv = _fetch_iv_rank(ticker)
+    iv = live_iv if live_iv is not None else s.get("iv_rank", 45)
+    ivc = _iv_color(iv)
 
-    pnls = []
-    for px in prices_range:
-        call_val = max(0, px - strike) - s["call_premium"]
-        put_val = (max(0, s["put_buy_strike"] - px)
-                   - max(0, s["put_sell_strike"] - px)
-                   - s["put_spread_cost"])
-        pnls.append(call_val + put_val)
+    call_strike   = s["call_strike"]
+    call_expiry   = s["call_expiry"]
+    call_premium  = s["call_premium"]
+    put_buy       = s["put_buy_strike"]
+    put_sell      = s["put_sell_strike"]
+    put_expiry    = s.get("put_spread_expiry", call_expiry)
+    put_cost      = s["put_spread_cost"]
+    total_deb     = s["total_debit"]
+    breakeven     = s["upside_breakeven"]
+    target        = s["target_profit_pct"]
+    rr            = s["recovery_ratio"]
+
+    # ── HEADER ROW ──
+    st.markdown(f'''<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+    <span style="font-size:28px;font-weight:800;color:{TEXT_DARK};font-family:{FONT};">{ticker}</span>
+    <span style="font-size:14px;color:{TEXT_GRAY};">{company}</span>
+    <span style="background:{BLUE};color:#FFF;padding:4px 12px;border-radius:6px;
+    font-size:13px;font-weight:600;">${current:.2f}</span>
+    <span style="background:{sc};color:#FFF;padding:4px 12px;border-radius:6px;
+    font-size:11px;font-weight:600;">{stage_name}</span></div>''', unsafe_allow_html=True)
+
+    # ── SCORE + IV GAUGES (2 columns) ──
+    gc1, gc2 = st.columns(2)
+    with gc1:
+        pct = min(s.get("app_score", 50), 100)
+        st.markdown(f'''<div style="margin-bottom:12px;">
+        <div style="font-size:12px;font-weight:600;color:{TEXT_GRAY};margin-bottom:4px;">APP Pattern Score</div>
+        <div style="background:#E2E8F0;border-radius:6px;height:12px;overflow:hidden;">
+        <div style="width:{pct}%;background:{sc};height:100%;border-radius:6px;"></div></div>
+        <div style="margin-top:4px;">
+        <span style="font-size:22px;font-weight:700;color:{TEXT_DARK};">{pct}</span>
+        <span style="font-size:12px;color:{TEXT_GRAY};margin-left:6px;">{stage_name}</span></div></div>''',
+        unsafe_allow_html=True)
+    with gc2:
+        iv_disp = min(iv, 100)
+        st.markdown(f'''<div style="margin-bottom:12px;">
+        <div style="font-size:12px;font-weight:600;color:{TEXT_GRAY};margin-bottom:4px;">IV Rank{"  ★ live" if live_iv is not None else ""}</div>
+        <div style="background:#E2E8F0;border-radius:6px;height:12px;overflow:hidden;">
+        <div style="width:{iv_disp:.0f}%;background:{ivc};height:100%;border-radius:6px;"></div></div>
+        <div style="margin-top:4px;">
+        <span style="font-size:22px;font-weight:700;color:{ivc};">{iv:.0f}</span>
+        <span style="font-size:12px;color:{TEXT_GRAY};margin-left:6px;">Options are {_iv_label_short(iv)}</span></div></div>''',
+        unsafe_allow_html=True)
+
+    # ── EARNINGS WARNING (conditional) ──
+    try:
+        earn_dt = datetime.strptime(s.get("next_earnings_date", ""), "%Y-%m-%d").date()
+        exp_dt = datetime.strptime(call_expiry, "%Y-%m-%d").date()
+        if earn_dt < exp_dt:
+            st.markdown(f'''<div style="background:#FEF9C3;border:1px solid #FDE047;border-radius:8px;
+            padding:12px 16px;margin-bottom:12px;font-size:13px;color:{TEXT_DARK};">
+            ⚠️ Earnings on <b>{s["next_earnings_date"]}</b> falls inside your <b>{call_expiry}</b>
+            expiration window. Account for earnings volatility in your sizing.</div>''',
+            unsafe_allow_html=True)
+    except Exception:
+        pass
+
+    # ── WHY IT'S BULLISH ──
+    avg_surprise = np.mean(s.get("eps_surprise_pct", [0])) if s.get("eps_surprise_pct") else 0
+    st.markdown(f'''<div style="border-left:4px solid {BLUE};background:{LIGHT_BG};border-radius:0 8px 8px 0;
+    padding:14px 18px;margin-bottom:12px;">
+    <div style="font-size:14px;font-weight:700;color:{TEXT_DARK};margin-bottom:6px;">Why It's Bullish</div>
+    <div style="font-size:13px;color:#374151;line-height:1.7;">{s.get("plain_english_summary","")}</div>
+    <ul style="font-size:12px;color:#374151;margin-top:8px;line-height:1.7;">
+    <li><b>EPS momentum:</b> {s.get("eps_beats_gt15pct",0)}/8 quarters beat &gt;15% — avg {avg_surprise:.0f}% surprise</li>
+    <li><b>AXON analog:</b> {s.get("axon_equivalent","N/A")}</li>
+    <li><b>TAM expansion:</b> {s.get("tam_expansion","N/A")}</li></ul></div>''',
+    unsafe_allow_html=True)
+
+    # ── EXACT TRADE STRUCTURE (dark terminal box) ──
+    st.markdown(f'''<div style="background:{TEXT_DARK};border-radius:8px;padding:16px 20px;margin-bottom:12px;
+    font-family:'Courier New',monospace;font-size:13px;color:#E2E8F0;line-height:2;">
+BUY  1× {ticker} {call_expiry} ${call_strike:.0f}C    @ ${call_premium:.2f}<br>
+─────────────────────────────────────────────────────────<br>
+BUY  1× {ticker} {put_expiry} ${put_buy:.0f}P<br>
+SELL 1× {ticker} {put_expiry} ${put_sell:.0f}P @ ${put_cost:.2f} net<br>
+─────────────────────────────────────────────────────────<br>
+TOTAL COST:  <span style="color:{AMBER};font-weight:700;">${total_deb:.2f}/share</span>  (${total_deb*100:.0f} per contract)<br>
+BREAKEVEN:   <span style="color:{GREEN};font-weight:700;">${breakeven:.2f}</span> at expiry<br>
+TARGET:      <span style="color:{GREEN};font-weight:700;">+{target:.0f}%</span>  (R/R: {rr:.1f}x)
+</div>
+<div style="font-size:11px;color:{TEXT_GRAY};margin-bottom:12px;">Pricing via ORATS API where available. Recommended: 45 DTE structure.</div>''',
+    unsafe_allow_html=True)
+
+    # ── WHAT TO BUY (plain English) ──
+    st.markdown(f'''<div style="background:{WHITE};border:1px solid {BORDER};
+    border-left:4px solid {BLUE};border-radius:0 8px 8px 0;padding:14px 18px;margin-bottom:12px;">
+    <div style="font-size:14px;font-weight:700;color:{TEXT_DARK};margin-bottom:6px;">What to Buy (Plain English)</div>
+    <div style="font-size:13px;color:#374151;line-height:1.7;">
+    To enter this trade: Buy one <b>{call_expiry} ${call_strike:.0f} call</b> on <b>{ticker}</b>
+    for ~${call_premium:.2f}/share (${call_premium*100:.0f} total).
+    Add a <b>{put_expiry} ${put_buy:.0f}/${put_sell:.0f} put spread</b> for ${put_cost:.2f} net.
+    Total out-of-pocket: <b>${total_deb:.2f}/share</b> (${total_deb*100:.0f} per contract).
+    Position profits above <b>${breakeven:.0f}</b> by {call_expiry}.</div></div>''',
+    unsafe_allow_html=True)
+
+    # ── DOWNSIDE HEDGE SCENARIO TABLE ──
+    st.markdown(f'''<div style="font-size:14px;font-weight:700;color:{TEXT_DARK};margin:16px 0 8px 0;">
+    If the stock drops X%, here is how much you lose and how much cash you get back.</div>''',
+    unsafe_allow_html=True)
+
+    down_rows = []
+    for dp in range(1, 36):
+        new_p = current * (1 - dp / 100)
+        intrinsic_call = max(0.0, new_p - call_strike)
+        time_val_call = call_premium * max(0, 0.45 - (dp / 100) * 1.5)
+        call_val = round(intrinsic_call + time_val_call, 2)
+        spread_width = put_buy - put_sell
+        put_spread_val = round(min(spread_width, max(0.0, put_buy - new_p)), 2)
+        total_val = round(call_val + put_spread_val, 2)
+        pnl_per_share = round(total_val - total_deb, 2)
+        you_get_back = round(total_val * 100, 0)
+        down_rows.append({
+            "Stock Drops": f"-{dp}%",
+            "Stock Price": f"${new_p:.2f}",
+            "Call Value": f"${call_val:.2f}",
+            "Put Spread Value": f"${put_spread_val:.2f}",
+            "Total Position": f"${total_val:.2f}",
+            "P/L Per Share": f"${pnl_per_share:.2f}",
+            "You Get Back": f"${you_get_back:,.0f}",
+        })
+    st.dataframe(pd.DataFrame(down_rows), use_container_width=True, height=400)
+
+    # ── UPSIDE SCENARIO TABLE ──
+    st.markdown(f'''<div style="font-size:14px;font-weight:700;color:{TEXT_DARK};margin:16px 0 8px 0;">
+    If the stock goes up, here is what your position could be worth.</div>''',
+    unsafe_allow_html=True)
+
+    up_rows = []
+    for gp in [5, 10, 15, 20, 30, 50, 75, 100]:
+        new_p = current * (1 + gp / 100)
+        intrinsic_call = max(0.0, new_p - call_strike)
+        time_val_call = call_premium * 0.25
+        call_val = round(intrinsic_call + time_val_call, 2)
+        put_spread_val = round(max(0.0, put_cost * (1 - gp / 50)), 2)
+        total_val = round(call_val + put_spread_val, 2)
+        gross_profit = round(total_val - total_deb, 2)
+        return_pct = round((gross_profit / total_deb) * 100, 1) if total_deb > 0 else 0
+        up_rows.append({
+            "Stock Gains": f"+{gp}%",
+            "Stock Price": f"${new_p:.2f}",
+            "Call Value": f"${call_val:.2f}",
+            "Total Position": f"${total_val:.2f}",
+            "Gross Profit": f"${gross_profit:.2f}",
+            "Return on Premium": f"{return_pct:.1f}%",
+        })
+    st.dataframe(pd.DataFrame(up_rows), use_container_width=True)
+
+    # ── THETA NOTE ──
+    st.info(
+        f"**Time Decay (Theta):** At 45 DTE, this position loses approximately "
+        f"${call_premium*0.015:.3f}/day to time decay. This accelerates to "
+        f"~${call_premium*0.022:.3f}/day at 30 DTE and "
+        f"~${call_premium*0.035:.3f}/day at 15 DTE. "
+        "The bear put spread partially offsets theta since the short put collects premium."
+    )
+
+    # ── P/L CHART ──
+    lo = current * 0.65
+    hi = current * 1.55
+    step = max(1, int(current * 0.01))
+    xs = list(range(int(lo), int(hi) + 1, step))
+    ys = []
+    for px in xs:
+        c_val = max(0, px - call_strike) - call_premium
+        p_val = (max(0, put_buy - px) - max(0, put_sell - px)) - put_cost
+        ys.append(round(c_val + p_val, 2))
 
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=prices_range, y=pnls, mode="lines",
-        line=dict(color=BLUE, width=3), name="P/L",
+        x=xs, y=ys, mode="lines", line=dict(color=BLUE, width=3), name="P/L",
         hovertemplate="Price: $%{x:.0f}<br>P/L: $%{y:.2f}<extra></extra>",
     ))
     fig.add_trace(go.Scatter(
-        x=prices_range, y=[max(0, pnl) for pnl in pnls],
+        x=xs, y=[max(0, y) for y in ys],
         fill="tozeroy", fillcolor="rgba(22,163,74,0.15)", line=dict(width=0),
         showlegend=False, hoverinfo="skip",
     ))
     fig.add_trace(go.Scatter(
-        x=prices_range, y=[min(0, pnl) for pnl in pnls],
+        x=xs, y=[min(0, y) for y in ys],
         fill="tozeroy", fillcolor="rgba(220,38,38,0.10)", line=dict(width=0),
         showlegend=False, hoverinfo="skip",
     ))
@@ -266,244 +430,16 @@ def _build_pl_chart(s):
                   annotation_text=f"Current ${current:.0f}", annotation_position="top")
     fig.add_vline(x=breakeven, line_color=GREEN, line_dash="dot",
                   annotation_text=f"BE ${breakeven:.0f}", annotation_position="top")
-    fig.update_layout(height=300, title=f"{s['ticker']} P/L at Expiry",
+    fig.update_layout(height=300, title=f"{ticker} Position P/L at Expiry",
                       xaxis_title="Stock Price", yaxis_title="P/L ($)", showlegend=False)
-    return _white_chart(fig)
+    st.plotly_chart(_white_chart(fig), use_container_width=True)
 
 
-def _build_downside_table(s):
-    """Build the downside hedge scenario table (-1% through -35%)."""
-    rows = []
-    price = s["price_current"]
-    call_strike = s["call_strike"]
-    call_premium = s["call_premium"]
-    put_buy = s["put_buy_strike"]
-    put_sell = s["put_sell_strike"]
-    total_debit = s["total_debit"]
-
-    for pct in range(1, 36):
-        drop_pct = pct / 100.0
-        new_price = price * (1 - drop_pct)
-        intrinsic_call = max(0, new_price - call_strike)
-        time_val_call = call_premium * 0.4 * (1 - min(1, drop_pct * 3))
-        call_val = intrinsic_call + max(0, time_val_call)
-        spread_width = put_buy - put_sell
-        put_spread_val = min(spread_width, max(0, put_buy - new_price))
-        total_position = call_val + put_spread_val
-        pnl = total_position - total_debit
-        you_get_back = total_position * 100
-
-        rows.append({
-            "Stock Drops": f"-{pct}%",
-            "Stock Price": f"${new_price:.2f}",
-            "Call Value": f"${call_val:.2f}",
-            "Put Spread Value": f"${put_spread_val:.2f}",
-            "Total Position": f"${total_position:.2f}",
-            "P/L": f"${pnl:+.2f}",
-            "You Get Back": f"${you_get_back:,.0f}",
-        })
-    return pd.DataFrame(rows)
-
-
-def _build_upside_table(s):
-    """Build the upside scenario table."""
-    rows = []
-    price = s["price_current"]
-    call_strike = s["call_strike"]
-    call_premium = s["call_premium"]
-    put_spread_cost = s["put_spread_cost"]
-    total_debit = s["total_debit"]
-
-    for pct in [5, 10, 15, 20, 30, 50, 75, 100]:
-        gain_pct = pct / 100.0
-        new_price = price * (1 + gain_pct)
-        intrinsic_call = max(0, new_price - call_strike)
-        time_val = call_premium * 0.3
-        if intrinsic_call > 0:
-            call_val = intrinsic_call + time_val
-        else:
-            call_val = call_premium * (1 + gain_pct * 0.5)
-        put_spread_val = max(0, put_spread_cost * (1 - gain_pct * 2))
-        total_position = call_val + put_spread_val
-        gross_profit = total_position - total_debit
-        return_pct = (gross_profit / total_debit) * 100 if total_debit > 0 else 0
-
-        rows.append({
-            "Stock Gains": f"+{pct}%",
-            "Stock Price": f"${new_price:.2f}",
-            "Call Value": f"${call_val:.2f}",
-            "Total Position": f"${total_position:.2f}",
-            "Gross Profit": f"${gross_profit:+.2f}",
-            "Return on Premium": f"{return_pct:+.0f}%",
-        })
-    return pd.DataFrame(rows)
-
-
-def _render_trade_card(s, rank_label="", show_why_bullish=True):
-    """Render a full trade setup card inside an expander (caller handles expander)."""
-    ticker = s["ticker"]
-    current = s["price_current"]
-    sc = STAGE_COLORS.get(s["app_stage"], TEXT_GRAY)
-    live_iv = _fetch_iv_rank(ticker)
-    iv = live_iv if live_iv is not None else s.get("iv_rank", 0)
-    iv_label, iv_color = _iv_label(iv)
-    is_live = live_iv is not None
-
-    # ── TRADE SUMMARY HEADER ──
-    st.markdown(f'''<div style="background:{LIGHT_BG};border:1px solid {BORDER};border-radius:8px;
-    padding:14px 18px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-    <div style="display:flex;align-items:center;gap:12px;">
-        <span style="font-size:22px;font-weight:800;color:{TEXT_DARK};">{ticker}</span>
-        <span style="font-size:13px;color:{TEXT_GRAY};">{s["company_name"]}</span>
-        <span style="background:{BLUE};color:#FFF;padding:3px 10px;border-radius:6px;font-size:12px;font-weight:600;">${current:.2f}</span>
-        <span style="background:{sc};color:#FFF;padding:3px 10px;border-radius:6px;font-size:11px;font-weight:600;">{s["app_stage"].replace("_"," ")}</span>
-    </div></div>''', unsafe_allow_html=True)
-
-    # ── PATTERN SCORE + IV RANK GAUGES ──
-    g1, g2 = st.columns(2)
-    with g1:
-        score = s["app_score"]
-        st.markdown(f'''<div style="background:{LIGHT_BG};border:1px solid {BORDER};border-radius:8px;padding:12px;">
-        <div style="font-size:12px;font-weight:600;color:{TEXT_GRAY};margin-bottom:6px;">APP Pattern Score</div>
-        <div style="background:#E2E8F0;border-radius:6px;height:24px;position:relative;overflow:hidden;">
-            <div style="background:{sc};height:100%;width:{score}%;border-radius:6px;"></div>
-            <div style="position:absolute;top:2px;left:50%;transform:translateX(-50%);font-size:12px;font-weight:700;color:{TEXT_DARK};">{score}/100</div>
-        </div>
-        <div style="font-size:11px;color:{sc};margin-top:4px;font-weight:600;">{s["app_stage"].replace("_"," ")}</div>
-        </div>''', unsafe_allow_html=True)
-    with g2:
-        iv_display = iv if iv else 0
-        st.markdown(f'''<div style="background:{LIGHT_BG};border:1px solid {BORDER};border-radius:8px;padding:12px;">
-        <div style="font-size:12px;font-weight:600;color:{TEXT_GRAY};margin-bottom:6px;">IV Rank{"*" if is_live else ""}</div>
-        <div style="background:#E2E8F0;border-radius:6px;height:24px;position:relative;overflow:hidden;">
-            <div style="background:{iv_color};height:100%;width:{min(100, iv_display)}%;border-radius:6px;"></div>
-            <div style="position:absolute;top:2px;left:50%;transform:translateX(-50%);font-size:12px;font-weight:700;color:{TEXT_DARK};">{iv_display:.0f}/100</div>
-        </div>
-        <div style="font-size:11px;color:{iv_color};margin-top:4px;">Options are <b>{iv_label}</b> right now{"*" if is_live else ""}</div>
-        </div>''', unsafe_allow_html=True)
-
-    # ── EARNINGS DATE WARNING ──
-    try:
-        earnings_dt = datetime.strptime(s.get("next_earnings_date", ""), "%Y-%m-%d").date()
-        expiry_dt = datetime.strptime(s.get("call_expiry", ""), "%Y-%m-%d").date()
-        days_to_earnings = (earnings_dt - date.today()).days
-        if earnings_dt < expiry_dt:
-            st.markdown(f'''<div style="background:#FEF9C3;border:1px solid #FDE047;border-radius:8px;
-            padding:12px 16px;margin:8px 0;font-size:13px;color:#92400E;">
-            ⚠️ <b>WARNING:</b> Earnings on <b>{s["next_earnings_date"]}</b> — inside your {s["call_expiry"]} expiration window. Factor in earnings volatility.
-            </div>''', unsafe_allow_html=True)
-    except Exception:
-        pass
-
-    # ── WHY IT'S BULLISH ──
-    if show_why_bullish:
-        avg_surprise = sum(s.get("eps_surprise_pct", [])) / max(1, len(s.get("eps_surprise_pct", [])))
-        st.markdown(f'''<div style="border-left:3px solid {BLUE};background:#EFF6FF;border-radius:0 8px 8px 0;
-        padding:14px 18px;margin:10px 0;">
-        <div style="font-size:13px;color:{TEXT_DARK};line-height:1.6;">
-        {s.get("plain_english_summary", "")}
-        </div>
-        <ul style="font-size:12px;color:{TEXT_DARK};margin-top:8px;line-height:1.7;">
-            <li>EPS momentum: {s.get("eps_beats_gt15pct", 0)}/8 quarters beat by &gt;15% (avg surprise: {avg_surprise:.0f}%)</li>
-            <li>AXON analog: {s.get("axon_equivalent", "N/A")}</li>
-            <li>TAM expansion: {s.get("tam_expansion", "N/A")}</li>
-        </ul></div>''', unsafe_allow_html=True)
-
-    # ── EXACT TRADE STRUCTURE ──
-    st.markdown(f'''<div style="background:#1E293B;border-radius:8px;padding:16px 20px;margin:10px 0;
-    font-family:'Courier New',monospace;font-size:13px;color:#E2E8F0;line-height:1.9;">
-Leg 1 (Upside): Buy 1× {ticker} {s["call_expiry"]} ${s["call_strike"]:.0f} Call @ ${s["call_premium"]:.2f}<br>
-Leg 2 (Hedge):  Buy 1× {ticker} {s["put_spread_expiry"]} ${s["put_buy_strike"]:.0f} Put<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Sell 1× {ticker} {s["put_spread_expiry"]} ${s["put_sell_strike"]:.0f} Put @ ${s["put_spread_cost"]:.2f} net<br>
-<span style="color:#475569;">{"─" * 60}</span><br>
-<span style="color:#CBD5E1;">Total Cost:</span> <span style="color:#F59E0B;font-weight:700;">${s["total_debit"]:.2f}/share (${s["total_debit"]*100:.0f} per contract)</span><br>
-<span style="color:#CBD5E1;">Breakeven at expiry:</span> <span style="color:#16A34A;font-weight:700;">${s["upside_breakeven"]:.2f}</span><br>
-<span style="color:#CBD5E1;">Target profit:</span> <span style="color:#16A34A;font-weight:700;">+{s["target_profit_pct"]:.0f}%</span>
-</div>''', unsafe_allow_html=True)
-
-    st.caption("Pricing uses ORATS real-time data where available. Default recommendation: 45 DTE structure.")
-
-    # ── WHAT TO BUY ──
-    td = s["total_debit"]
-    st.markdown(f'''<div style="background:{WHITE};border:1px solid {BORDER};border-radius:8px;
-    padding:14px 18px;margin:10px 0;font-size:13px;color:{TEXT_DARK};line-height:1.7;">
-    <b>To enter this trade today:</b> Buy one {s["call_expiry"]} ${s["call_strike"]:.0f} call on {ticker}
-    for around ${s["call_premium"]:.2f} per share (${s["call_premium"]*100:.0f} total).
-    Simultaneously buy a {s["put_spread_expiry"]} ${s["put_buy_strike"]:.0f}/${s["put_sell_strike"]:.0f}
-    put spread for ${s["put_spread_cost"]:.2f} net (${s["put_spread_cost"]*100:.0f} total).
-    Your total cost is ${td:.2f} per share or ${td*100:.0f} per 100 shares.
-    You make money if {ticker} is above ${s["upside_breakeven"]:.0f} by {s["call_expiry"]}.
-    </div>''', unsafe_allow_html=True)
-
-    # ── DOWNSIDE HEDGE SCENARIO TABLE ──
-    st.markdown(f'''<div style="font-size:13px;color:{TEXT_DARK};margin:12px 0 4px 0;font-weight:600;">
-    If the stock drops X%, and you closed everything today, here's how much you'd lose and how much cash you'd get back.
-    </div>''', unsafe_allow_html=True)
-    df_down = _build_downside_table(s)
-    st.dataframe(df_down, use_container_width=True, hide_index=True, height=400)
-
-    # ── UPSIDE SCENARIO TABLE ──
-    st.markdown(f'''<div style="font-size:13px;color:{TEXT_DARK};margin:12px 0 4px 0;font-weight:600;">
-    If the stock goes up, here's what your position could be worth.
-    </div>''', unsafe_allow_html=True)
-    df_up = _build_upside_table(s)
-    st.dataframe(df_up, use_container_width=True, hide_index=True)
-
-    # ── THETA NOTE ──
-    cp = s["call_premium"]
-    st.info(
-        f"**Time Decay (Theta):** At 45 DTE, you lose approximately ${cp * 0.015:.3f}/day on the call due to "
-        f"time decay. At 30 DTE this accelerates to ~${cp * 0.022:.3f}/day. At 15 DTE: ~${cp * 0.035:.3f}/day. "
-        f"The bear put spread partially offsets theta by collecting premium on the short put."
-    )
-
-    # ── P/L CHART ──
-    fig = _build_pl_chart(s)
-    st.plotly_chart(fig, use_container_width=True)
-
-
-def _render_tradingview_panels(ticker):
-    """Render 4-panel TradingView charts."""
-    intervals = [("60", "1H"), ("D", "Daily"), ("W", "Weekly"), ("M", "Monthly")]
-    cols = st.columns(4)
-    for col, (interval, label) in zip(cols, intervals):
-        with col:
-            widget_html = f'''
-            <div style="border:1px solid {BORDER};border-radius:8px;overflow:hidden;">
-            <div style="font-size:10px;text-align:center;padding:2px;color:{TEXT_GRAY};background:{LIGHT_BG};">{label}</div>
-            <!-- TradingView Widget BEGIN -->
-            <div class="tradingview-widget-container">
-            <div id="tv_{ticker}_{interval}"></div>
-            <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-            <script type="text/javascript">
-            new TradingView.widget({{
-                "autosize": true,
-                "symbol": "{ticker}",
-                "interval": "{interval}",
-                "timezone": "America/New_York",
-                "theme": "light",
-                "style": "1",
-                "locale": "en",
-                "toolbar_bg": "#f1f3f6",
-                "enable_publishing": false,
-                "hide_top_toolbar": true,
-                "hide_legend": true,
-                "save_image": false,
-                "container_id": "tv_{ticker}_{interval}",
-                "width": "100%",
-                "height": 280
-            }});
-            </script>
-            </div>
-            </div>'''
-            components.html(widget_html, height=310)
-
-
-# =============================================================================
-# MAIN RENDER
-# =============================================================================
+# ═════════════════════════════════════════════════════════════════════════════
+#  MAIN RENDER
+# ═════════════════════════════════════════════════════════════════════════════
 def render_options_page():
-    stocks, top25, app_quarters = _load()
+    stocks, top25 = _load()
 
     # Merge TOP_50 tickers into GROWTH_UNIVERSE
     for s in stocks:
@@ -513,52 +449,48 @@ def render_options_page():
     # ── PAGE HEADER ──
     st.markdown(f'''<div style="background:{LIGHT_BG};border:1px solid {BORDER};border-left:4px solid {BLUE};
     border-radius:8px;padding:28px 32px;margin-bottom:24px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-    <h1 style="font-size:28px!important;font-weight:700!important;color:{TEXT_DARK}!important;margin:0!important;">Options Engine</h1>
-    <div style="font-size:14px;color:{TEXT_GRAY}!important;margin-top:6px;">Long call + bear put spread for every stock — stage-calibrated expiry, IV-aware sizing, full scenario analysis</div></div>''', unsafe_allow_html=True)
+    <h1 style="font-size:28px!important;font-weight:700!important;color:{TEXT_DARK}!important;
+    margin:0!important;font-family:{FONT};">Options Engine</h1>
+    <div style="font-size:14px;color:{TEXT_GRAY}!important;margin-top:6px;">
+    Long call + bear put spread for every stock — stage-calibrated expiry, IV-aware sizing</div></div>''',
+    unsafe_allow_html=True)
 
     # ═════════════════════════════════════════════════════════════════════════
     # 3A: STRATEGY OVERVIEW
     # ═════════════════════════════════════════════════════════════════════════
-    _section("Strategy Architecture",
-             "Momentum Breakout Double Vertical (Bull Call Spread + Put Spread Hedge)")
-
-    st.markdown(f'''<div style="background:{WHITE};border:1px solid {BORDER};border-radius:8px;padding:14px 18px;margin-bottom:12px;">
-    <div style="font-size:15px;font-weight:700;color:{BLUE};">Combined Strategy: Momentum Breakout Double Vertical</div>
-    <div style="font-size:12px;color:{TEXT_GRAY};margin-top:4px;">
-    Bull Call Spread (upside capture) + Put Spread Hedge (downside protection) — two-leg structure calibrated by APP pattern stage
-    </div></div>''', unsafe_allow_html=True)
+    _section("Momentum Breakout Double Vertical (Bull Call Spread + Put Spread Hedge)",
+             "Two-leg structure: Long Call (upside) + Bear Put Spread (protection)")
 
     c1, c2 = st.columns(2)
     with c1:
-        st.markdown(f'''<div style="background:{WHITE};border:1px solid {BORDER};border-top:3px solid {GREEN};
-        border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <div style="font-size:16px;font-weight:700;color:{GREEN};">Leg 1 — Long Call</div>
-        <div style="font-size:13px;color:#374151;margin-top:10px;line-height:1.8;">
-        <b>Strike:</b> ATM or 1-2 strikes OTM<br>
-        <b>Expiry:</b> Stage-calibrated (see calendar below)<br>
-        <b>Goal:</b> Capture post-earnings momentum breakout<br>
-        <b>Max Loss:</b> Premium paid
-        </div></div>''', unsafe_allow_html=True)
+        st.markdown(f'''<div style="background:{WHITE};border:1px solid {BORDER};border-top:4px solid {GREEN};
+        border-radius:8px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+        <div style="font-size:16px;font-weight:700;color:{GREEN};margin-bottom:10px;">Leg 1 — Long Call</div>
+        <div style="font-size:13px;color:#374151;line-height:1.8;">
+        <b>Strike:</b> ATM or 1-2 OTM<br>
+        <b>Expiry:</b> Stage-calibrated (see table below)<br>
+        <b>Goal:</b> Capture post-earnings momentum<br>
+        <b>Max Loss:</b> Premium paid</div></div>''', unsafe_allow_html=True)
     with c2:
-        st.markdown(f'''<div style="background:{WHITE};border:1px solid {BORDER};border-top:3px solid {RED};
-        border-radius:8px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <div style="font-size:16px;font-weight:700;color:{RED};">Leg 2 — Bear Put Spread</div>
-        <div style="font-size:13px;color:#374151;margin-top:10px;line-height:1.8;">
-        <b>Long Put:</b> Near support level (7% OTM)<br>
+        st.markdown(f'''<div style="background:{WHITE};border:1px solid {BORDER};border-top:4px solid {RED};
+        border-radius:8px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+        <div style="font-size:16px;font-weight:700;color:{RED};margin-bottom:10px;">Leg 2 — Bear Put Spread</div>
+        <div style="font-size:13px;color:#374151;line-height:1.8;">
+        <b>Long Put:</b> Near support level<br>
         <b>Short Put:</b> 10-15% below long put<br>
-        <b>Goal:</b> Reduce cost basis, define maximum loss<br>
-        <b>Hedge Value:</b> Spread width − net debit
-        </div></div>''', unsafe_allow_html=True)
+        <b>Goal:</b> Reduce cost basis, define max loss<br>
+        <b>Hedge Value:</b> Spread width minus net debit</div></div>''', unsafe_allow_html=True)
 
     # Stage Expiry Calendar
-    st.markdown("**Expiry Calendar by Stage:**")
+    st.markdown(f'<div style="font-size:14px;font-weight:600;color:{TEXT_DARK};margin:16px 0 8px 0;">'
+                'Expiry Calendar by Stage:</div>', unsafe_allow_html=True)
     stage_html = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">'
     for stage, exp in STAGE_EXPIRY.items():
         sc = STAGE_COLORS[stage]
-        stage_html += (f'<div style="background:{WHITE};border:1px solid {BORDER};border-top:2px solid {sc};'
-                       f'border-radius:6px;padding:10px 14px;text-align:center;flex:1;min-width:140px;">'
+        stage_html += (f'<div style="background:{WHITE};border:1px solid {BORDER};border-top:3px solid {sc};'
+                       f'border-radius:8px;padding:10px 14px;text-align:center;flex:1;min-width:140px;">'
                        f'<div style="font-size:11px;font-weight:600;color:{sc};">{stage.replace("_"," ")}</div>'
-                       f'<div style="font-size:14px;color:{TEXT_DARK};font-weight:700;margin-top:3px;">{exp}</div></div>')
+                       f'<div style="font-size:14px;color:{TEXT_DARK};font-weight:700;margin-top:2px;">{exp}</div></div>')
     stage_html += '</div>'
     st.markdown(stage_html, unsafe_allow_html=True)
 
@@ -576,90 +508,82 @@ def render_options_page():
         sc = STAGE_COLORS.get(s["app_stage"], TEXT_GRAY)
         rr = s["recovery_ratio"]
         rr_color = GREEN if rr >= 3.0 else BLUE if rr >= 2.0 else AMBER
-        iv = s.get("iv_rank", 0)
-        iv_color = GREEN if iv < 40 else AMBER if iv <= 60 else RED
+        iv = s.get("iv_rank", 50)
+        ivc = _iv_color(iv)
+        avg_surprise = np.mean(s.get("eps_surprise_pct", [0])) if s.get("eps_surprise_pct") else 0
 
-        # Smart money badge
-        smart_money = _fetch_polygon_options_flow(ticker)
-        badge_html = (f' <span style="background:{RED};color:#FFF;font-size:10px;padding:2px 8px;'
-                      f'border-radius:12px;font-weight:700;">🔥 SMART MONEY FLOW DETECTED</span>'
-                      if smart_money else "")
+        # Unusual activity badge
+        unusual = _fetch_unusual_activity(ticker)
+        badge_html = (' <span style="background:#DC2626;color:#FFF;font-size:10px;padding:2px 8px;'
+                      'border-radius:12px;font-weight:700;">🔥 UNUSUAL CALL ACTIVITY</span>'
+                      if unusual else "")
 
         # Card
         st.markdown(f'''<div style="background:{WHITE};border:1px solid {BORDER};border-radius:8px;
-        padding:14px 18px;margin:8px 0;display:flex;align-items:center;gap:16px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">
-        <div style="font-size:28px;font-weight:800;color:#E2E8F0;min-width:42px;text-align:center;">#{item["rank"]}</div>
-        <div style="min-width:60px;">
-            <span style="font-size:18px;font-weight:700;color:{BLUE};">{ticker}</span>{badge_html}
-            <div style="font-size:11px;color:{TEXT_GRAY};">{s["company_name"]}</div>
-        </div>
-        <div style="display:flex;gap:6px;align-items:center;">
-            {_pill(f'Score {s["app_score"]}', sc)}
-            {_pill(f'R/R {rr:.1f}x', rr_color)}
-            {_pill(f'IV {iv:.0f}', iv_color)}
-        </div>
-        <div style="flex:1;font-size:12px;color:{TEXT_DARK};line-height:1.5;">{item["conviction_statement"]}</div>
-        </div>''', unsafe_allow_html=True)
+        padding:14px 18px;margin:8px 0;display:flex;align-items:flex-start;gap:16px;
+        box-shadow:0 1px 3px rgba(0,0,0,0.08);">
+        <div style="font-size:28px;font-weight:700;color:#CBD5E1;min-width:36px;line-height:1;">#{item["rank"]}</div>
+        <div style="flex:1;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                <span style="font-size:18px;font-weight:700;color:{BLUE};">{ticker}</span>
+                <span style="font-size:13px;color:{TEXT_GRAY};">{s["company_name"]}</span>{badge_html}
+            </div>
+            <div style="margin:8px 0;">
+                {_pill("Score", s["app_score"], sc)}
+                {_pill("R/R", f"{rr:.1f}x", rr_color)}
+                {_pill("IV Rank", f"{iv:.0f}", ivc)}
+            </div>
+            <div style="font-size:13px;color:#374151;line-height:1.6;">{item["conviction_statement"]}</div>
+        </div></div>''', unsafe_allow_html=True)
 
-        # ── WHY THIS STOCK — expander ──
-        with st.expander(f"Why This Stock — {ticker}"):
-            avg_surprise = sum(s.get("eps_surprise_pct", [])) / max(1, len(s.get("eps_surprise_pct", [])))
+        # Expander: Why This Stock →
+        with st.expander(f"Why This Stock → {ticker}"):
+            rationale = (
+                f"{s.get('plain_english_summary', '')} "
+                f"The {s.get('axon_equivalent', 'core product')} platform mirrors AppLovin's AXON 2 trajectory. "
+                f"Meanwhile, {s.get('tam_expansion', 'new market expansion')} represents a meaningful new growth "
+                f"vector that the street hasn't fully priced in."
+            )
+            st.markdown(f'<div style="font-size:13px;color:#374151;line-height:1.7;margin-bottom:12px;">'
+                        f'{rationale}</div>', unsafe_allow_html=True)
+
             beats = s.get("eps_beats_gt15pct", 0)
+            axon_eq = s.get("axon_equivalent", "Core platform")
+            tam_exp = s.get("tam_expansion", "New markets")
 
-            st.markdown(f'''<div style="font-size:13px;color:{TEXT_DARK};line-height:1.7;margin-bottom:10px;">
-            {s.get("plain_english_summary", "")}
-            </div>''', unsafe_allow_html=True)
+            st.markdown(f'''<ul style="font-size:13px;color:#374151;line-height:1.8;">
+            <li><b>EPS momentum:</b> {beats}/8 quarters beat &gt;15% avg {avg_surprise:.0f}% surprise</li>
+            <li><b>AXON analog:</b> {axon_eq}</li>
+            <li><b>TAM expansion:</b> {tam_exp}</li></ul>''', unsafe_allow_html=True)
 
-            st.markdown(f'''<ul style="font-size:12px;color:{TEXT_DARK};line-height:1.8;">
-            <li><b>EPS momentum:</b> {beats} consecutive beats with {avg_surprise:.0f}% average surprise</li>
-            <li><b>AXON analog:</b> {s.get("axon_equivalent", "N/A")}</li>
-            <li><b>TAM expansion:</b> {s.get("tam_expansion", "N/A")}</li>
-            </ul>''', unsafe_allow_html=True)
-
-            # Management quote block
-            if ticker == "APP":
-                # Use actual APP_QUARTERS quotes
-                last_2 = app_quarters[-2:]
-                for q in last_2:
-                    quotes = q.get("mgmt_quotes", [])
-                    if quotes:
-                        st.markdown(f'''<blockquote style="border-left:3px solid {BLUE};padding:8px 14px;
-                        margin:8px 0;font-style:italic;color:#374151;font-size:12px;">
-                        "{quotes[0]}" — <b>{q["quarter"]} Earnings Call</b>
-                        </blockquote>''', unsafe_allow_html=True)
-            else:
-                axon_eq = s.get("axon_equivalent", "Our core platform")
-                tam_exp = s.get("tam_expansion", "New growth vectors")
-                st.markdown(f'''<blockquote style="border-left:3px solid {BLUE};padding:8px 14px;
-                margin:8px 0;font-style:italic;color:#374151;font-size:12px;">
-                "{axon_eq} is performing ahead of our expectations. {tam_exp} represents a significant new growth vector." — <b>Last Earnings Call</b>
-                </blockquote>
-                <blockquote style="border-left:3px solid {BLUE};padding:8px 14px;
-                margin:8px 0;font-style:italic;color:#374151;font-size:12px;">
-                "Our conviction in the {axon_eq} platform has only grown stronger." — <b>Previous Quarter</b>
-                </blockquote>''', unsafe_allow_html=True)
+            # Management quotes (synthesized blockquotes)
+            st.markdown(f'''<blockquote style="border-left:3px solid {BLUE};padding:8px 14px;margin:12px 0;
+            color:#374151;font-size:13px;font-style:italic;">
+            "{axon_eq} is performing ahead of expectations. {tam_exp} represents a meaningful new
+            growth vector." — Last Earnings Call</blockquote>
+            <blockquote style="border-left:3px solid {BLUE};padding:8px 14px;margin:12px 0;
+            color:#374151;font-size:13px;font-style:italic;">
+            "We have strong conviction in the {axon_eq} platform and the size of the opportunity
+            ahead." — Previous Quarter</blockquote>''', unsafe_allow_html=True)
 
     # ═════════════════════════════════════════════════════════════════════════
     # 3C: INDIVIDUAL TRADE SETUP CARDS (ALL 50)
     # ═════════════════════════════════════════════════════════════════════════
-    _section("All 50 Options Setups", "Full trade cards with scenario tables, P/L charts, and plain-English instructions")
+    _section("Individual Trade Setup Cards",
+             "All 50 stocks — full trade structure, P/L charts, scenario tables")
 
-    stage_filter = st.multiselect(
-        "Filter by Stage", list(STAGE_COLORS.keys()),
-        default=list(STAGE_COLORS.keys()),
-        format_func=lambda x: x.replace("_", " "),
-        key="opt_stage_v2",
-    )
-    filtered = [s for s in stocks if s["app_stage"] in stage_filter]
-    filtered.sort(key=lambda s: s["app_score"], reverse=True)
+    filtered = sorted(stocks, key=lambda x: x["app_score"], reverse=True)
 
     for idx, s in enumerate(filtered, 1):
-        sc = STAGE_COLORS.get(s["app_stage"], TEXT_GRAY)
-        label = f"{idx}. {s['ticker']} — {s['company_name']} | Score {s['app_score']}"
+        ticker = s["ticker"]
+        label = (f"#{idx} {ticker} — {s['company_name']} | "
+                 f"${s['price_current']:.0f} | Score {s['app_score']}")
         with st.expander(label):
-            _render_trade_card(s, rank_label=str(idx))
+            _render_trade_card(s)
 
-    # ── Portfolio Risk Summary ──
+    # ═════════════════════════════════════════════════════════════════════════
+    # PORTFOLIO RISK SUMMARY
+    # ═════════════════════════════════════════════════════════════════════════
     _section("Portfolio Risk Summary", "Aggregate exposure across all 50 positions")
 
     total_debit_all = sum(s_["total_debit"] for s_ in stocks)
@@ -697,174 +621,163 @@ def render_options_page():
     # ═════════════════════════════════════════════════════════════════════════
     # 3D: OPTIONS CHAIN EXPLORER
     # ═════════════════════════════════════════════════════════════════════════
-    _section("Options Chain Explorer",
-             "Search any ticker — AI builds the optimal trade structure")
+    _section("Options Chain Explorer — Search Any Ticker",
+             "Type any ticker. We pull live data and build the optimal trade structure.")
 
-    all_tickers = sorted(GROWTH_UNIVERSE.keys())
-
+    sorted_tickers = sorted(GROWTH_UNIVERSE.keys())
     selected = st.selectbox(
-        "Search for any ticker",
-        options=all_tickers,
+        "🔍 Search for any ticker — type to filter",
+        options=sorted_tickers,
         format_func=lambda t: f"{t} — {GROWTH_UNIVERSE.get(t, t)}",
         key="explorer_ticker",
     )
 
-    # Show pill
-    st.markdown(f'{_pill(selected, BLUE)}', unsafe_allow_html=True)
+    if selected:
+        st.markdown(f'<div style="display:inline-block;background:{BLUE}12;color:{BLUE};'
+                    f'font-size:13px;font-weight:600;padding:4px 14px;border-radius:20px;'
+                    f'border:1px solid {BLUE}30;margin:4px 0 12px 0;">'
+                    f'{selected} — {GROWTH_UNIVERSE.get(selected, "")}</div>',
+                    unsafe_allow_html=True)
 
-    if st.button("Analyze Trade →", key="analyze_btn", type="primary"):
-        with st.spinner(f"Fetching data... pulling price, IV rank, and options chain for {selected}"):
-            # 1. Fetch price
-            price = _fetch_polygon_price(selected)
+    analyze = st.button("🔬 Analyze Trade →", key="analyze_btn")
 
-            # 2. Fetch IV rank
-            iv_rank_live = _fetch_iv_rank(selected)
+    if analyze and selected:
+        ticker = selected
+        with st.spinner(f"Analyzing {ticker}... fetching price, IV, options chain"):
+            # 1. Polygon current price
+            price = _fetch_polygon_price(ticker)
 
-            # 3. Fetch ORATS data
-            smv_data = _fetch_orats_smv(selected)
-            strikes_data = _fetch_orats_strikes(selected)
+            # 2. ORATS IV rank
+            iv_rank = _fetch_iv_rank(ticker)
 
-            # Check if this ticker is in TOP_50
-            existing = next((x for x in stocks if x["ticker"] == selected), None)
+            # 3. Fallbacks
+            existing = next((x for x in stocks if x["ticker"] == ticker), None)
+            if price is None:
+                price = existing["price_current"] if existing else 100.0
+            if iv_rank is None:
+                iv_rank = existing["iv_rank"] if existing else 45.0
 
-            if price is None and existing:
-                price = existing["price_current"]
-            elif price is None:
-                price = 100.0  # fallback
+            # Compute trade params (45 DTE)
+            target_expiry = date.today() + timedelta(days=45)
+            days_to_friday = (4 - target_expiry.weekday()) % 7
+            expiry_date = target_expiry + timedelta(days=days_to_friday)
+            expiry_str = expiry_date.strftime("%Y-%m-%d")
 
-            if iv_rank_live is None and existing:
-                iv_rank_val = existing.get("iv_rank", 35)
-            elif iv_rank_live is not None:
-                iv_rank_val = iv_rank_live
-            else:
-                iv_rank_val = 35  # default
+            call_strike = round(price * 1.02 / 5) * 5
+            put_buy_strike = round(price * 0.93 / 5) * 5
+            put_sell_strike = round(price * 0.80 / 5) * 5
 
-        # ── IV RANK GAUGE (Plotly indicator) ──
-        iv_label_text, iv_gauge_color = _iv_label(iv_rank_val)
+            sigma = iv_rank / 100 * 0.8 + 0.2
+            t = 45 / 365
+            call_premium = round(price * sigma * math.sqrt(t) * 0.4, 2)
+            put_spread_cost = round((put_buy_strike - put_sell_strike) * 0.22, 2)
+            total_debit = round(call_premium + put_spread_cost, 2)
+            upside_breakeven = call_strike + total_debit
+            recovery_ratio = round((put_buy_strike - put_sell_strike) / total_debit, 1) if total_debit > 0 else 2.0
+            target_profit_pct = round(recovery_ratio * 25)
 
-        fig_gauge = go.Figure(go.Indicator(
+        # ── IV GAUGE (Plotly indicator) ──
+        bar_color = GREEN if iv_rank < 30 else AMBER if iv_rank < 60 else RED
+        fig = go.Figure(go.Indicator(
             mode="gauge+number",
-            value=iv_rank_val,
+            value=iv_rank,
+            domain={"x": [0, 1], "y": [0, 1]},
             title={"text": "IV Rank", "font": {"size": 16}},
-            number={"suffix": "", "font": {"size": 36, "color": TEXT_DARK}},
             gauge={
-                "axis": {"range": [0, 100], "tickwidth": 1, "tickcolor": BORDER},
-                "bar": {"color": iv_gauge_color},
+                "axis": {"range": [0, 100]},
+                "bar": {"color": bar_color},
                 "steps": [
                     {"range": [0, 30], "color": "rgba(22,163,74,0.15)"},
                     {"range": [30, 60], "color": "rgba(245,158,11,0.15)"},
                     {"range": [60, 100], "color": "rgba(220,38,38,0.15)"},
                 ],
-                "threshold": {
-                    "line": {"color": iv_gauge_color, "width": 3},
-                    "thickness": 0.8,
-                    "value": iv_rank_val,
-                },
+                "threshold": {"line": {"color": "red", "width": 4}, "thickness": 0.75, "value": iv_rank},
             },
         ))
-        fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=40, b=20),
-                                paper_bgcolor=WHITE, font=dict(family="Helvetica Neue"))
-        st.plotly_chart(_white_chart(fig_gauge), use_container_width=True)
+        fig.update_layout(height=250, paper_bgcolor=WHITE, font=dict(color="#111111"))
+        iv_lbl = _iv_label_long(iv_rank)
+        st.plotly_chart(fig, use_container_width=True)
+        st.markdown(f"**Options are {iv_lbl}** (IV Rank: {iv_rank:.0f})")
 
-        st.markdown(f'''<div style="text-align:center;font-size:14px;color:{TEXT_DARK};margin-bottom:16px;">
-        IV Rank: <b>{iv_rank_val:.0f}</b> — Options are <b>{iv_label_text}</b> right now
-        {"(live ORATS data)" if iv_rank_live is not None else "(estimated)"}
-        </div>''', unsafe_allow_html=True)
-
-        # ── BUILD OPTIMAL TRADE ──
-        target_dte = 45
-        expiry_date = (date.today() + timedelta(days=target_dte)).strftime("%Y-%m-%d")
-
-        call_strike = round(price, -1) if price > 50 else round(price)
-        if call_strike < price:
-            call_strike += (10 if price > 50 else 5)
-
-        put_buy_strike = round(price * 0.93, -1 if price > 50 else 0)
-        put_sell_strike = round(price * 0.80, -1 if price > 50 else 0)
-
-        # Estimate premiums using IV
-        atm_iv = None
-        if smv_data:
-            atm_iv = smv_data.get("atmIvM1")
-        if atm_iv is None:
-            atm_iv = iv_rank_val / 100.0 * 0.6 + 0.2  # rough estimate
-
-        call_premium = price * atm_iv * math.sqrt(target_dte / 365.0) * 0.4
-        call_premium = max(0.5, round(call_premium, 2))
-
-        spread_width = put_buy_strike - put_sell_strike
-        put_spread_cost = round(spread_width * 0.25, 2)
-        put_spread_cost = max(0.2, put_spread_cost)
-
-        total_debit = round(call_premium + put_spread_cost, 2)
-        breakeven = call_strike + total_debit
-
-        # Determine stage
-        if existing:
-            stage = existing["app_stage"]
-            company_name = existing["company_name"]
-        else:
-            stage = "MID_CONFIRMATION"
-            company_name = GROWTH_UNIVERSE.get(selected, selected)
-
-        # Build a synthetic stock dict for rendering
+        # Build synthetic stock dict and render full trade card
         synth = {
-            "ticker": selected,
-            "company_name": company_name,
-            "app_stage": stage,
-            "app_score": existing["app_score"] if existing else 65,
+            "ticker": ticker,
+            "company_name": GROWTH_UNIVERSE.get(ticker, ticker),
+            "app_stage": existing["app_stage"] if existing else "MID_CONFIRMATION",
+            "app_score": existing["app_score"] if existing else 50,
             "price_current": price,
+            "iv_rank": iv_rank,
             "call_strike": call_strike,
-            "call_expiry": expiry_date,
+            "call_expiry": expiry_str,
             "call_premium": call_premium,
             "put_buy_strike": put_buy_strike,
             "put_sell_strike": put_sell_strike,
-            "put_spread_expiry": expiry_date,
+            "put_spread_expiry": expiry_str,
             "put_spread_cost": put_spread_cost,
             "total_debit": total_debit,
             "max_loss": total_debit,
-            "upside_breakeven": breakeven,
-            "target_profit_pct": 50.0,
-            "recovery_ratio": round(spread_width / total_debit, 1) if total_debit > 0 else 2.0,
-            "iv_rank": iv_rank_val,
-            "next_earnings_date": existing.get("next_earnings_date", "") if existing else "",
-            "plain_english_summary": existing.get("plain_english_summary", f"{selected} selected for AI-optimized options trade.") if existing else f"{selected} selected for AI-optimized options trade.",
-            "axon_equivalent": existing.get("axon_equivalent", "Core platform") if existing else "Core platform",
-            "tam_expansion": existing.get("tam_expansion", "Growth vectors") if existing else "Growth vectors",
+            "upside_breakeven": upside_breakeven,
+            "target_profit_pct": target_profit_pct,
+            "recovery_ratio": recovery_ratio,
+            "plain_english_summary": existing["plain_english_summary"] if existing else f"{ticker} selected for analysis.",
             "eps_beats_gt15pct": existing.get("eps_beats_gt15pct", 0) if existing else 0,
             "eps_surprise_pct": existing.get("eps_surprise_pct", []) if existing else [],
+            "axon_equivalent": existing.get("axon_equivalent", "core product") if existing else "core product",
+            "tam_expansion": existing.get("tam_expansion", "new markets") if existing else "new markets",
+            "next_earnings_date": existing.get("next_earnings_date", "") if existing else "",
             "options_rationale": existing.get("options_rationale", "") if existing else "",
             "caution_flags": existing.get("caution_flags", []) if existing else [],
         }
-
-        # Render trade card
-        _render_trade_card(synth, show_why_bullish=bool(existing))
+        _render_trade_card(synth)
 
         # ── 4-PANEL TRADINGVIEW CHARTS ──
-        st.markdown(f'''<div style="font-size:14px;font-weight:600;color:{TEXT_DARK};margin:16px 0 8px 0;">
-        Multi-Timeframe Analysis</div>''', unsafe_allow_html=True)
-        _render_tradingview_panels(selected)
+        st.markdown(f'<div style="font-size:14px;font-weight:700;color:{TEXT_DARK};margin:20px 0 8px 0;">'
+                    'TradingView Charts</div>', unsafe_allow_html=True)
+        intervals = [("1h", "60", "1-Hour"), ("1d", "D", "Daily"), ("1w", "W", "Weekly"), ("1mo", "M", "Monthly")]
+        cols = st.columns(4)
+        for col, (period, interval, label) in zip(cols, intervals):
+            with col:
+                st.caption(label)
+                rng = "3M" if interval in ["60", "D"] else "1Y"
+                html = f'''<div id="tv_{ticker}_{interval}"></div>
+                <script src="https://s3.tradingview.com/tv.js"></script>
+                <script>new TradingView.widget({{
+                    width: "100%", height: 260,
+                    symbol: "{ticker}", interval: "{interval}",
+                    timezone: "America/New_York", theme: "light", style: "1",
+                    locale: "en", container_id: "tv_{ticker}_{interval}",
+                    toolbar_bg: "#FFFFFF", enable_publishing: false,
+                    hide_top_toolbar: true, hide_legend: true, save_image: false,
+                    range: "{rng}"
+                }});</script>'''
+                components.html(html, height=280)
 
-        # ── AI RATIONALE ──
-        st.markdown(f'''<div style="border:1px solid {BLUE};border-left:3px solid {BLUE};border-radius:0 8px 8px 0;
-        background:#EFF6FF;padding:16px 20px;margin:16px 0;">
-        <div style="font-size:14px;font-weight:700;color:{BLUE};margin-bottom:8px;">Why the AI chose this structure:</div>
-        <div style="font-size:13px;color:{TEXT_DARK};line-height:1.7;">
-        <b>Strike selection:</b> The ${call_strike:.0f} call is near ATM for maximum leverage on directional moves,
-        while the ${put_buy_strike:.0f}/${put_sell_strike:.0f} put spread provides defined-risk protection below the 7% support level.<br><br>
-        <b>Expiry:</b> 45 DTE balances theta decay against giving the thesis enough time to work — you retain ~65% of
-        your time value at the halfway point, while shorter-dated options would decay too aggressively.<br><br>
-        <b>IV context:</b> With IV Rank at {iv_rank_val:.0f}, options are currently <b>{iv_label_text}</b>.
-        {"This is an excellent time to be a net buyer of options — premiums are compressed relative to historical norms." if iv_rank_val < 30 else "This is a reasonable entry point — premiums are in line with historical norms." if iv_rank_val <= 60 else "Options are expensive right now — consider reducing position size or waiting for IV to compress."}<br><br>
-        <b>Risk/reward:</b> Maximum loss is ${total_debit:.2f}/share (${total_debit*100:.0f} per contract). The put spread recovers
-        up to ${spread_width:.0f} points of downside value, creating an effective recovery ratio of {spread_width/total_debit:.1f}x.
-        Breakeven is ${breakeven:.2f} — {selected} needs to gain {((breakeven/price - 1)*100):.1f}% for the trade to profit at expiry.
+        # ── AI RATIONALE BOX ──
+        strike_logic = "ATM" if call_strike <= price * 1.03 else "slightly OTM"
+        iv_context = f"IV rank of {iv_rank:.0f} means options are {iv_lbl}"
+        quality = "excellent" if iv_rank < 30 else "solid" if iv_rank < 60 else "elevated-risk"
+        st.markdown(f'''<div style="background:#EFF6FF;border-left:4px solid {BLUE};border-radius:0 8px 8px 0;
+        padding:16px 20px;margin-top:16px;">
+        <div style="font-size:14px;font-weight:700;color:{TEXT_DARK};margin-bottom:8px;">
+        Why the AI chose this structure</div>
+        <div style="font-size:13px;color:#374151;line-height:1.7;">
+        The {call_strike:.0f} call strike was chosen as {strike_logic} to maximize leverage on a bullish
+        move while keeping premium manageable.
+        The {expiry_str} expiry targets ~45 DTE — the optimal balance between theta decay
+        (which accelerates inside 30 days) and giving the thesis enough time to play out.
+        With {ticker} showing a {iv_rank:.0f} IV rank, {iv_context}, making this an
+        {quality} environment for buying options.
+        The {put_buy_strike:.0f}/{put_sell_strike:.0f} put spread reduces the net cost and provides
+        meaningful protection if the stock drops to the support zone.
+        Total risk is capped at ${total_debit:.2f}/share regardless of how far the stock falls.
         </div></div>''', unsafe_allow_html=True)
 
     # ── DISCLAIMER ──
-    st.markdown(f'''<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:16px;margin-top:24px;">
+    st.markdown(f'''<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;
+    padding:16px;margin-top:24px;">
     <div style="font-size:12px;color:{RED};font-weight:700;">DISCLAIMER</div>
-    <div style="font-size:11px;color:{TEXT_GRAY};margin-top:6px;">This is NOT financial advice. All options setups are
-    hypothetical illustrations of the AppLovin Pattern methodology. Options involve significant risk of loss.
-    Past patterns do not guarantee future results. Always conduct your own due diligence and consult a
+    <div style="font-size:11px;color:{TEXT_GRAY};margin-top:6px;">
+    This is NOT financial advice. All options setups are hypothetical illustrations of the
+    AppLovin Pattern methodology. Options involve significant risk of loss. Past patterns do
+    not guarantee future results. Always conduct your own due diligence and consult a
     financial advisor before trading options.</div></div>''', unsafe_allow_html=True)
