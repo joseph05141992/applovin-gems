@@ -113,6 +113,16 @@ st.markdown("""
         padding: 16px;
         margin-bottom: 12px;
     }
+
+    /* ── Trade terminal box — override global dark-text rule ── */
+    .stApp .trade-terminal,
+    .stApp .trade-terminal div,
+    .stApp .trade-terminal span,
+    .stApp .trade-terminal p {
+        color: #E0E0E0 !important;
+    }
+    .stApp .trade-terminal .tv-amber { color: #F59E0B !important; }
+    .stApp .trade-terminal .tv-green { color: #4ADE80 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -131,7 +141,7 @@ with st.sidebar:
 
     page = st.radio(
         "Navigate",
-        ["The AppLovin Strategy", "50-Stock Scanner", "Options Engine"],
+        ["The AppLovin Strategy", "50-Stock Scanner", "Options Engine", "Unusual Options Activity"],
         label_visibility="collapsed",
     )
 
@@ -139,10 +149,13 @@ with st.sidebar:
 from applovin_page import render_applovin_page
 from scanner_page import render_scanner_page
 from options_page import render_options_page
+from unusual_activity_page import render_unusual_activity_page
 
 if page == "The AppLovin Strategy":
     render_applovin_page()
 elif page == "50-Stock Scanner":
     render_scanner_page()
-else:
+elif page == "Options Engine":
     render_options_page()
+else:
+    render_unusual_activity_page()

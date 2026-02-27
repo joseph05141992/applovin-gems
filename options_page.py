@@ -312,16 +312,16 @@ def _render_trade_card(s):
     unsafe_allow_html=True)
 
     # ── EXACT TRADE STRUCTURE (dark terminal box) ──
-    st.markdown(f'''<div style="background:{TEXT_DARK};border-radius:8px;padding:16px 20px;margin-bottom:12px;
-    font-family:'Courier New',monospace;font-size:13px;color:#E2E8F0;line-height:2;">
+    st.markdown(f'''<div class="trade-terminal" style="background:{TEXT_DARK};border-radius:8px;padding:16px 20px;margin-bottom:12px;
+    font-family:'Courier New',monospace;font-size:13px;line-height:2;">
 BUY  1× {ticker} {call_expiry} ${call_strike:.0f}C    @ ${call_premium:.2f}<br>
 ─────────────────────────────────────────────────────────<br>
 BUY  1× {ticker} {put_expiry} ${put_buy:.0f}P<br>
 SELL 1× {ticker} {put_expiry} ${put_sell:.0f}P @ ${put_cost:.2f} net<br>
 ─────────────────────────────────────────────────────────<br>
-TOTAL COST:  <span style="color:{AMBER};font-weight:700;">${total_deb:.2f}/share</span>  (${total_deb*100:.0f} per contract)<br>
-BREAKEVEN:   <span style="color:{GREEN};font-weight:700;">${breakeven:.2f}</span> at expiry<br>
-TARGET:      <span style="color:{GREEN};font-weight:700;">+{target:.0f}%</span>  (R/R: {rr:.1f}x)
+TOTAL COST:  <span class="tv-amber" style="font-weight:700;">${total_deb:.2f}/share</span>  (${total_deb*100:.0f} per contract)<br>
+BREAKEVEN:   <span class="tv-green" style="font-weight:700;">${breakeven:.2f}</span> at expiry<br>
+TARGET:      <span class="tv-green" style="font-weight:700;">+{target:.0f}%</span>  (R/R: {rr:.1f}x)
 </div>
 <div style="font-size:11px;color:{TEXT_GRAY};margin-bottom:12px;">Pricing via ORATS API where available. Recommended: 45 DTE structure.</div>''',
     unsafe_allow_html=True)
